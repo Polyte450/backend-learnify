@@ -14,7 +14,7 @@ app.use(express.json());
 const credentials = z.object({ email: z.string().email(), password: z.string().min(6) });
 const registration = credentials.extend({
   name: z.string().trim().min(2),
-  role: z.enum(["student", "admin"]).default("student"),
+  role: z.enum(["student", "opportunity_giver", "provider", "admin"]).default("student"),
   interests: z.union([z.string(), z.array(z.string())]).optional()
 });
 const frontendUrl = config.frontendUrl;
@@ -52,13 +52,11 @@ app.post("/api/auth/register", async (req, res, next) => {
         name: data.name,
         email,
         passwordHash: await hashPassword(data.password),
-        role: data.role === "admin" ? "ADMIN" : "STUDENT",
+        role: data.role === "admin" ? "ADMIN" : data.role === "opportunity_giver" || data.role === "provider" ? "OPPORTUNITY_GIVER" : "STUDENT",
         interests: Array.isArray(data.interests) ? data.interests : data.interests ? [data.interests] : []
       }
     });
-    const token = await issueAuthToken(user.id, "EMAIL_VERIFICATION", 24);
-    await sendLink({ user, token, path: "/verify-email", subject: "Verify your Learnify email" });
-    res.status(201).json({ user: publicUser(user), requiresVerification: true });
+    res.status(201).json({ user: publicUser(user), token: signToken(user), requiresVerification: false });
   } catch (error) { next(error); }
 });
 
@@ -67,7 +65,6 @@ app.post("/api/auth/login", async (req, res, next) => {
     const data = credentials.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email: data.email.toLowerCase() } });
     if (!user?.passwordHash || !(await comparePassword(data.password, user.passwordHash))) return res.status(401).json({ message: "Invalid email or password" });
-    if (!user.emailVerifiedAt) return res.status(403).json({ message: "Verify your email before signing in", code: "EMAIL_NOT_VERIFIED" });
     res.json({ user: publicUser(user), token: signToken(user) });
   } catch (error) { next(error); }
 });
@@ -137,7 +134,7 @@ app.patch("/api/users/me", requireAuth, async (req, res, next) => {
 });
 
 app.get("/api/opportunities", requireAuth, async (_req, res, next) => { try { res.json({ opportunities: (await prisma.opportunity.findMany({ orderBy: { createdAt: "desc" } })).map(publicOpportunity) }); } catch (error) { next(error); } });
-app.post("/api/opportunities", requireAuth, requireRole("ADMIN"), async (req, res, next) => {
+app.post("/api/opportunities", requireAuth, requireRole("ADMIN", "OPPORTUNITY_GIVER"), async (req, res, next) => {
   try { const data = z.object({ title: z.string().min(3), type: z.string().min(2), organization: z.string().min(2), description: z.string().min(10), deadline: z.string().optional(), location: z.string().optional(), requirements: z.array(z.string()).default([]), status: z.enum(["OPEN", "DRAFT"]).default("OPEN") }).parse(req.body); const opportunity = await prisma.opportunity.create({ data: { ...data, deadline: data.deadline ? new Date(data.deadline) : null, createdById: req.auth.sub } }); res.status(201).json({ opportunity: publicOpportunity(opportunity) }); } catch (error) { next(error); }
 });
 app.post("/api/opportunities/:id/applications", requireAuth, async (req, res, next) => {

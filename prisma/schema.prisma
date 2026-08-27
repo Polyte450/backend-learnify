@@ -9,6 +9,7 @@ datasource db {
 
 enum UserRole {
   STUDENT
+  OPPORTUNITY_GIVER
   ADMIN
 }
 

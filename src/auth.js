@@ -7,7 +7,7 @@ export const publicUser = (user) => ({
   id: user.id,
   name: user.name,
   email: user.email,
-  role: user.role === "ADMIN" ? "admin" : "student",
+  role: user.role === "ADMIN" ? "admin" : user.role === "OPPORTUNITY_GIVER" ? "opportunity_giver" : "student",
   interests: user.interests,
   language: user.language,
   theme: user.theme,
@@ -37,7 +37,7 @@ export function requireAuth(req, res, next) {
   }
 }
 
-export const requireRole = (role) => (req, res, next) => {
-  if (req.auth?.role !== role) return res.status(403).json({ message: "Insufficient permissions" });
+export const requireRole = (...roles) => (req, res, next) => {
+  if (!roles.includes(req.auth?.role)) return res.status(403).json({ message: "Insufficient permissions" });
   next();
 };
