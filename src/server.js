@@ -31,7 +31,15 @@ async function issueAuthToken(userId, type, hours) {
   return raw;
 }
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, service: "learnify-api" }));
+app.get("/api/health", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true, service: "learnify-api", database: "connected" });
+  } catch (error) {
+    console.error("Database health check failed", error);
+    res.status(503).json({ ok: false, service: "learnify-api", database: "unavailable" });
+  }
+});
 
 app.post("/api/auth/register", async (req, res, next) => {
   try {
