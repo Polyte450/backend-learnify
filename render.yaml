@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: learnify-backend
+    runtime: node
+    buildCommand: npm install && npm run prisma:generate && npm run prisma:deploy
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: https://frontend-learnify.vercel.app

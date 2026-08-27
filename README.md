@@ -23,6 +23,16 @@ npm run prisma:migrate -- --name add-theme-preference
 
 The API runs at `http://localhost:5000`.
 
+## Render deployment
+
+Set the Render build command to:
+
+```bash
+npm install && npm run prisma:generate && npm run prisma:deploy
+```
+
+Use `npm start` as the start command. Add `DATABASE_URL` with the Aiven PostgreSQL connection string, a strong `JWT_SECRET`, and `FRONTEND_URL=https://frontend-learnify.vercel.app` in the Render environment settings.
+
 ## Core endpoints
 
 - `GET /api/health`
