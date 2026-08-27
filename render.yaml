@@ -9,5 +9,9 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: ADMIN_EMAIL
+        value: bezagenieariella@gmail.com
+      - key: ADMIN_PASSWORD
+        sync: false
       - key: FRONTEND_URL
         value: https://frontend-learnify.vercel.app

@@ -14,11 +14,25 @@ app.use(express.json());
 const credentials = z.object({ email: z.string().email(), password: z.string().min(6) });
 const registration = credentials.extend({
   name: z.string().trim().min(2),
-  role: z.enum(["student", "opportunity_giver", "provider", "admin"]).default("student"),
+  role: z.enum(["student", "opportunity_giver", "provider"]).default("student"),
   interests: z.union([z.string(), z.array(z.string())]).optional()
 });
 const frontendUrl = config.frontendUrl;
 const mailer = config.smtp ? nodemailer.createTransport({ host: config.smtp.host, port: config.smtp.port, secure: config.smtp.port === 465, auth: { user: config.smtp.user, pass: config.smtp.password } }) : null;
+async function ensureAdminAccount() {
+  if (!config.adminPassword) {
+    console.warn("ADMIN_PASSWORD is not configured; skipping admin account bootstrap");
+    return;
+  }
+  const email = config.adminEmail.toLowerCase();
+  const passwordHash = await hashPassword(config.adminPassword);
+  await prisma.user.upsert({
+    where: { email },
+    update: { role: "ADMIN", passwordHash, emailVerifiedAt: new Date() },
+    create: { name: "System Administrator", email, passwordHash, role: "ADMIN", emailVerifiedAt: new Date(), interests: [] }
+  });
+  console.log(`Admin account ready for ${email}`);
+}
 async function sendLink({ user, token, path, subject }) {
   const link = `${frontendUrl}${path}?token=${token}`;
   if (!mailer) { console.log(`[email development link] ${link}`); return; }
@@ -52,7 +66,7 @@ app.post("/api/auth/register", async (req, res, next) => {
         name: data.name,
         email,
         passwordHash: await hashPassword(data.password),
-        role: data.role === "admin" ? "ADMIN" : data.role === "opportunity_giver" || data.role === "provider" ? "OPPORTUNITY_GIVER" : "STUDENT",
+        role: data.role === "opportunity_giver" || data.role === "provider" ? "OPPORTUNITY_GIVER" : "STUDENT",
         interests: Array.isArray(data.interests) ? data.interests : data.interests ? [data.interests] : []
       }
     });
@@ -169,4 +183,6 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ message: "Internal server error" });
 });
 
-app.listen(config.port, () => console.log(`Learnify API running on http://localhost:${config.port}`));
+ensureAdminAccount()
+  .then(() => app.listen(config.port, () => console.log(`Learnify API running on http://localhost:${config.port}`)))
+  .catch((error) => { console.error("Could not prepare the admin account", error); process.exit(1); });
