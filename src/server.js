@@ -7,7 +7,8 @@ import { prisma } from "./db.js";
 import { comparePassword, createRawToken, hashPassword, hashToken, publicApplication, publicOpportunity, publicProject, publicUser, requireAuth, requireRole, signToken } from "./auth.js";
 
 const app = express();
-app.use(cors({ origin: config.frontendUrl, credentials: true }));
+const allowedOrigins = new Set([config.frontendUrl, "https://frontend-learnify.vercel.app", "http://localhost:5173"]);
+app.use(cors({ origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)), credentials: true }));
 app.use(express.json());
 
 const credentials = z.object({ email: z.string().email(), password: z.string().min(6) });
