@@ -8,6 +8,8 @@ export const publicUser = (user) => ({
   name: user.name,
   email: user.email,
   role: user.role === "ADMIN" ? "admin" : user.role === "OPPORTUNITY_GIVER" ? "opportunity_giver" : "student",
+  pathway: user.pathway,
+  focus: user.focus,
   interests: user.interests,
   language: user.language,
   theme: user.theme,
@@ -17,7 +19,7 @@ export const publicUser = (user) => ({
   emailVerifiedAt: user.emailVerifiedAt
 });
 export const publicOpportunity = (item) => ({ ...item, deadline: item.deadline?.toISOString() || null });
-export const publicApplication = (item) => ({ id: item.id, status: item.status, note: item.note, createdAt: item.createdAt, opportunity: item.opportunity ? publicOpportunity(item.opportunity) : undefined });
+export const publicApplication = (item) => ({ id: item.id, status: item.status.toLowerCase(), note: item.note, cvUrl: item.cvUrl, certificateUrls: item.certificateUrls, createdAt: item.createdAt, applicant: item.user ? publicUser(item.user) : undefined, opportunity: item.opportunity ? publicOpportunity(item.opportunity) : undefined });
 export const publicProject = (item) => item;
 
 export const hashPassword = (password) => bcrypt.hash(password, 12);
