@@ -7,7 +7,7 @@ export const publicUser = (user) => ({
   id: user.id,
   name: user.name,
   email: user.email,
-  role: user.role === "ADMIN" ? "admin" : user.role === "OPPORTUNITY_GIVER" ? "opportunity_giver" : "student",
+  role: user.role === "ADMIN" ? "admin" : user.role === "OPPORTUNITY_GIVER" ? "opportunity_giver" : user.role === "PARENT" ? "parent" : "student",
   pathway: user.pathway,
   focus: user.focus,
   interests: user.interests,

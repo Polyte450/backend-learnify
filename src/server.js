@@ -14,9 +14,9 @@ app.use(express.json());
 const credentials = z.object({ email: z.string().email(), password: z.string().min(6) });
 const registration = credentials.extend({
   name: z.string().trim().min(2),
-  role: z.enum(["student", "opportunity_giver", "provider"]).default("student"),
+  role: z.enum(["student", "opportunity_giver", "provider", "parent"]).default("student"),
   interests: z.union([z.string(), z.array(z.string())]).optional(),
-  pathway: z.enum(["education", "career"]).default("education")
+  pathway: z.enum(["education", "career", "both"]).default("education")
 });
 const frontendUrl = config.frontendUrl;
 const mailer = config.smtp ? nodemailer.createTransport({ host: config.smtp.host, port: config.smtp.port, secure: config.smtp.port === 465, auth: { user: config.smtp.user, pass: config.smtp.password } }) : null;
@@ -67,7 +67,7 @@ app.post("/api/auth/register", async (req, res, next) => {
         name: data.name,
         email,
         passwordHash: await hashPassword(data.password),
-        role: data.role === "opportunity_giver" || data.role === "provider" ? "OPPORTUNITY_GIVER" : "STUDENT",
+        role: data.role === "opportunity_giver" || data.role === "provider" ? "OPPORTUNITY_GIVER" : data.role === "parent" ? "PARENT" : "STUDENT",
         interests: Array.isArray(data.interests) ? data.interests : data.interests ? [data.interests] : [],
         pathway: data.pathway,
         focus: Array.isArray(data.interests) ? data.interests[0] || "exploring" : data.interests || "exploring"
@@ -136,7 +136,7 @@ app.get("/api/auth/me", requireAuth, async (req, res, next) => {
 
 app.patch("/api/users/me/preferences", requireAuth, async (req, res, next) => {
   try {
-    const data = z.object({ language: z.string().min(2).max(10).optional(), theme: z.enum(["light", "dark"]).optional(), prefersReducedMotion: z.boolean().optional(), screenReaderMode: z.boolean().optional(), phone: z.string().max(30).optional(), interests: z.array(z.string()).optional(), focus: z.string().min(2).max(40).optional(), pathway: z.enum(["education", "career"]).optional() }).parse(req.body);
+    const data = z.object({ language: z.string().min(2).max(10).optional(), theme: z.enum(["light", "dark"]).optional(), prefersReducedMotion: z.boolean().optional(), screenReaderMode: z.boolean().optional(), phone: z.string().max(30).optional(), interests: z.array(z.string()).optional(), focus: z.string().min(2).max(40).optional(), pathway: z.enum(["education", "career", "both"]).optional() }).parse(req.body);
     const user = await prisma.user.update({ where: { id: req.auth.sub }, data });
     res.json({ user: publicUser(user) });
   } catch (error) { next(error); }
@@ -152,13 +152,13 @@ app.patch("/api/users/me", requireAuth, async (req, res, next) => {
 
 app.get("/api/opportunities", requireAuth, async (req, res, next) => { try {
   const user = await prisma.user.findUnique({ where: { id: req.auth.sub } });
-  const category = req.auth.role === "ADMIN" ? req.query.category : user?.pathway || "education";
+  const category = req.auth.role === "ADMIN" ? req.query.category : user?.pathway === "both" ? undefined : user?.pathway || "education";
   const focus = user?.focus || "exploring";
   const where = { ...(category ? { category } : {}), ...(req.auth.role === "OPPORTUNITY_GIVER" ? { createdById: req.auth.sub } : {}), ...(req.auth.role === "STUDENT" ? { status: "OPEN" } : {}), ...(req.auth.role === "STUDENT" && focus !== "exploring" ? { OR: [{ focuses: { has: focus } }, { focuses: { has: "exploring" } }] } : {}) };
   res.json({ opportunities: (await prisma.opportunity.findMany({ where, orderBy: { createdAt: "desc" } })).map(publicOpportunity) });
 } catch (error) { next(error); } });
 app.post("/api/opportunities", requireAuth, requireRole("ADMIN", "OPPORTUNITY_GIVER"), async (req, res, next) => {
-  try { const data = z.object({ title: z.string().min(3), type: z.string().min(2), organization: z.string().min(2), description: z.string().min(10), category: z.enum(["education", "career"]).default("education"), focuses: z.array(z.string()).default(["exploring"]), deadline: z.string().optional(), location: z.string().optional(), requirements: z.array(z.string()).default([]), status: z.enum(["OPEN", "DRAFT"]).default("OPEN") }).parse(req.body); const category = req.auth.role === "OPPORTUNITY_GIVER" ? (await prisma.user.findUnique({ where: { id: req.auth.sub }, select: { pathway: true } }))?.pathway || "education" : data.category; const opportunity = await prisma.opportunity.create({ data: { ...data, category, deadline: data.deadline ? new Date(data.deadline) : null, createdById: req.auth.sub } }); res.status(201).json({ opportunity: publicOpportunity(opportunity) }); } catch (error) { next(error); }
+  try { const data = z.object({ title: z.string().min(3), type: z.string().min(2), organization: z.string().min(2), description: z.string().min(10), category: z.enum(["education", "career", "both"]).default("education"), focuses: z.array(z.string()).default(["exploring"]), deadline: z.string().optional(), location: z.string().optional(), requirements: z.array(z.string()).default([]), status: z.enum(["OPEN", "DRAFT"]).default("OPEN") }).parse(req.body); const category = req.auth.role === "OPPORTUNITY_GIVER" ? (await prisma.user.findUnique({ where: { id: req.auth.sub }, select: { pathway: true } }))?.pathway || "education" : data.category; const opportunity = await prisma.opportunity.create({ data: { ...data, category, deadline: data.deadline ? new Date(data.deadline) : null, createdById: req.auth.sub } }); res.status(201).json({ opportunity: publicOpportunity(opportunity) }); } catch (error) { next(error); }
 });
 app.post("/api/opportunities/:id/applications", requireAuth, async (req, res, next) => {
   try { const opportunity = await prisma.opportunity.findUnique({ where: { id: req.params.id } }); if (!opportunity || opportunity.status !== "OPEN") return res.status(404).json({ message: "Opportunity is not available" }); const data = z.object({ note: z.string().max(2000).optional(), cvUrl: z.string().url().optional(), certificateUrls: z.array(z.string().url()).default([]) }).parse(req.body); const application = await prisma.application.create({ data: { userId: req.auth.sub, opportunityId: opportunity.id, ...data }, include: { opportunity: true, user: true } }); res.status(201).json({ application: publicApplication(application) }); } catch (error) { if (error.code === "P2002") return res.status(409).json({ message: "You already applied to this opportunity" }); next(error); }
@@ -169,6 +169,17 @@ app.get("/api/projects", requireAuth, async (req, res, next) => { try { const pr
 app.get("/api/learning/progress", requireAuth, async (req, res, next) => { try { const progress = await prisma.lessonProgress.findMany({ where: { userId: req.auth.sub } }); res.json({ progress }); } catch (error) { next(error); } });
 app.post("/api/learning/progress", requireAuth, async (req, res, next) => { try { const data = z.object({ tutorialId: z.string().min(1), progress: z.number().int().min(0).max(100) }).parse(req.body); const record = await prisma.lessonProgress.upsert({ where: { userId_tutorialId: { userId: req.auth.sub, tutorialId: data.tutorialId } }, update: { progress: data.progress, completedAt: data.progress === 100 ? new Date() : null }, create: { ...data, userId: req.auth.sub, completedAt: data.progress === 100 ? new Date() : null } }); res.json({ progress: record }); } catch (error) { next(error); } });
 app.post("/api/projects", requireAuth, async (req, res, next) => { try { const data = z.object({ title: z.string().min(3), description: z.string().min(10), category: z.string().min(2), link: z.string().url().optional(), fileUrl: z.string().url().optional() }).parse(req.body); const project = await prisma.project.create({ data: { ...data, userId: req.auth.sub } }); res.status(201).json({ project: publicProject(project) }); } catch (error) { next(error); } });
+app.get("/api/parent/learners", requireAuth, requireRole("PARENT"), async (req, res, next) => { try {
+  const links = await prisma.learnerLink.findMany({ where: { parentId: req.auth.sub }, include: { learner: { include: { lessonProgress: true, projects: true, applications: true } } }, orderBy: { createdAt: "desc" } });
+  res.json({ learners: links.map((link) => ({ linkId: link.id, status: link.status.toLowerCase(), learner: publicUser(link.learner), progress: link.learner.lessonProgress.filter((item) => item.progress === 100).length, projects: link.learner.projects.length, applications: link.learner.applications.length })) });
+} catch (error) { next(error); } });
+app.post("/api/parent/learners", requireAuth, requireRole("PARENT"), async (req, res, next) => { try {
+  const data = z.object({ email: z.string().email() }).parse(req.body);
+  const learner = await prisma.user.findUnique({ where: { email: data.email.toLowerCase() } });
+  if (!learner || learner.role !== "STUDENT") return res.status(404).json({ message: "No learner account was found with that email" });
+  const link = await prisma.learnerLink.upsert({ where: { parentId_learnerId: { parentId: req.auth.sub, learnerId: learner.id } }, update: { status: "PENDING" }, create: { parentId: req.auth.sub, learnerId: learner.id }, include: { learner: true } });
+  res.status(201).json({ link: { linkId: link.id, status: link.status.toLowerCase(), learner: publicUser(link.learner) } });
+} catch (error) { next(error); } });
 app.get("/api/admin/users", requireAuth, requireRole("ADMIN"), async (_req, res, next) => { try { res.json({ users: (await prisma.user.findMany({ orderBy: { createdAt: "desc" } })).map(publicUser) }); } catch (error) { next(error); } });
 app.delete("/api/admin/users/:id", requireAuth, requireRole("ADMIN"), async (req, res, next) => { try { if (req.params.id === req.auth.sub) return res.status(400).json({ message: "You cannot remove your own account" }); await prisma.user.delete({ where: { id: req.params.id } }); res.status(204).end(); } catch (error) { next(error); } });
 app.get("/api/provider/analytics", requireAuth, requireRole("OPPORTUNITY_GIVER"), async (req, res, next) => { try { const [opportunities, applications] = await Promise.all([prisma.opportunity.findMany({ where: { createdById: req.auth.sub }, select: { id: true, type: true, category: true } }), prisma.application.findMany({ where: { opportunity: { createdById: req.auth.sub } }, select: { status: true } })]); const count = (values, value) => values.filter((item) => item === value).length; res.json({ byCategory: [...new Set(opportunities.map((item) => item.category))].map((name) => ({ name, value: count(opportunities.map((item) => item.category), name) })), byType: [...new Set(opportunities.map((item) => item.type))].map((name) => ({ name, value: count(opportunities.map((item) => item.type), name) })), applications: applications.length, pending: count(applications.map((item) => item.status), "PENDING") }); } catch (error) { next(error); } });

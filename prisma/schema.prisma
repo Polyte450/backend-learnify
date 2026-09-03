@@ -10,6 +10,7 @@ datasource db {
 enum UserRole {
   STUDENT
   OPPORTUNITY_GIVER
+  PARENT
   ADMIN
 }
 
@@ -36,6 +37,22 @@ model User {
   projects           Project[]
   lessonProgress     LessonProgress[]
   createdOpportunities Opportunity[] @relation("OpportunityCreator")
+  linkedLearners       LearnerLink[] @relation("ParentLinks")
+  linkedToParents      LearnerLink[] @relation("LearnerLinks")
+}
+
+model LearnerLink {
+  id         String   @id @default(cuid())
+  parentId   String
+  learnerId  String
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  parent     User     @relation("ParentLinks", fields: [parentId], references: [id], onDelete: Cascade)
+  learner    User     @relation("LearnerLinks", fields: [learnerId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, learnerId])
+  @@index([learnerId, status])
 }
 
 model AuthAccount {

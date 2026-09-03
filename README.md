@@ -44,6 +44,8 @@ Use `npm start` as the start command. Add `DATABASE_URL` with the Aiven PostgreS
 - `POST /api/auth/reset-password`
 - `GET /api/auth/me` with `Authorization: Bearer <token>`
 - `PATCH /api/users/me/preferences`
+- `GET /api/parent/learners`
+- `POST /api/parent/learners`
 - `POST /api/integrations/ussd`
 - `GET /api/integrations/:provider/start`
 
